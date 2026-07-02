@@ -14,6 +14,7 @@ wheels/
 
 # pytorch/python/numpy formats
 *.pth
+*.pt
 *.pkl
 *.npy
 *.ts
@@ -40,3 +41,30 @@ _darcs
 **/node_modules
 yarn.lock
 package-lock.json
+
+# local third-party checkout used by evaluation scripts
+external/sam2/
+
+# local experiment outputs
+checkpoints/
+tmp/
+wandb/
+logs/
+runs/
+outputs/
+results/
+.codex
+
+# local training/evaluation scripts
+scripts/lung_sam2_amg_eval.py
+scripts/lung_sam2_finetuned_full_test.py
+scripts/lung_zero_shot_eval.py
+scripts/run_dca_ring_sam_train.sh
+scripts/run_dca_ring_zero_shot_eval.sh
+scripts/run_lung_sam2_amg_eval.sh
+scripts/run_lung_sam2_auto_seg_train.sh
+scripts/run_lung_sam2_finetuned_full_test.sh
+scripts/run_lung_zero_shot_eval.sh
+scripts/run_pd_mice_zero_shot_eval.sh
+scripts/setup_sam_conda_env.sh
+scripts/train_dca_ring_sam.py
