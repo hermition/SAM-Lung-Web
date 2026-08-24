@@ -4,7 +4,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRIPT_PATH="${REPO_ROOT}/scripts/run_dca_ring_sam_train.sh"
 DATASET_FORMAT="${DATASET_FORMAT:-dir_splits}"
-DATASET_ROOT="${DCA_RING_DATASET_ROOT:-/data_new/moyancheng/dataset/dca_dataset_ring}"
+DATASET_ROOT="${DCA_RING_DATASET_ROOT:-}"
 SAM_CONDA_ENV="${SAM_CONDA_ENV:-/data_new/moyancheng/envs/SAM}"
 MODEL_TYPE="${MODEL_TYPE:-vit_b}"
 TRAIN_MODE="${TRAIN_MODE:-decoder_only}"
@@ -167,7 +167,7 @@ done
 
 DATASET_NAME="$(dataset_name "${DATASET_FORMAT}")"
 MODEL_TAG="sam_${MODEL_TYPE}"
-if [[ -z "${DCA_RING_DATASET_ROOT:-}" ]]; then
+if [[ -z "${DATASET_ROOT}" ]]; then
   DATASET_ROOT="$(default_dataset_root "${DATASET_FORMAT}")"
 fi
 if [[ -z "${INPUT_SIZE}" ]]; then
