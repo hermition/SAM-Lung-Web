@@ -1,12 +1,13 @@
-# Custom SAM1 交互式网页分割
+# SAM1/SAM2 交互式网页分割
 
-这是一个基于当前仓库 `SamPredictor` 的最小 Gradio 网页界面，支持：
+这是一个基于 Gradio 的 2D 图像点击式分割网页界面。默认使用肺部数据集上进行 prompt-aware 微调的 SAM2 Hiera-L checkpoint，支持：
 
 - 上传 JPG、JPEG、PNG 等 2D 原图；
 - 前景点/背景点点击 prompt；
-- 多点、撤销、清空和重置；
+- 多点交互，后续点击复用上一轮 low-resolution mask；
+- 撤销、清空和重置；
 - mask overlay、二值 mask 和 PNG 下载；
-- 标准 SAM1 原始 checkpoint，以及训练生成的 `best.pt`/`last.pt`（包含 `model_state_dict`）。
+- 默认 SAM2 checkpoint，以及显式选择后端的 SAM1 checkpoint。
 
 ## 启动
 
@@ -15,24 +16,39 @@
 ```bash
 conda activate /data_new/moyancheng/envs/segllm
 pip install -r web_ui/requirements.txt
-python web_ui/app.py \
-  --checkpoint /path/to/custom/best.pt \
-  --model-type vit_b \
-  --device cuda:0 \
-  --input-size 1024
+python web_ui/app.py
 ```
 
-如果 checkpoint 的 `image_encoder.pos_embed` 能够推断输入边长，可以省略 `--input-size`；对于训练时使用 256 输入的模型，请显式传入 `--input-size 256`。浏览器访问 `http://localhost:7860`。
+默认 checkpoint 为：
+
+```text
+external/sam2/sam2_logs/lung_hiera_l_1024_f1_bs7_12ep_full_valbest_v2/
+checkpoints/val_all_seg_slice_iou_mean.pt
+```
+
+默认 SAM2 配置为 `external/sam2/sam2/configs/sam2/sam2_hiera_l.yaml`，浏览器访问 `http://localhost:7860`。
+
+如果要使用 SAM1 checkpoint，请显式指定后端：
+
+```bash
+python web_ui/app.py \
+  --backend sam1 \
+  --checkpoint checkpoints/sam_vit_b_01ec64.pth \
+  --model-type vit_b \
+  --device cuda:0
+```
 
 也可以使用环境变量配置：
 
 ```bash
-SAM_CHECKPOINT=/path/to/custom/best.pt \
-SAM_MODEL_TYPE=vit_b \
+SAM_BACKEND=auto \
+SAM_CHECKPOINT=/path/to/checkpoint.pt \
 SAM_DEVICE=cuda:0 \
-SAM_INPUT_SIZE=1024 \
+SAM2_CONFIG=configs/sam2/sam2_hiera_l.yaml \
 python web_ui/app.py
 ```
+
+`--model-type` 和 `--input-size` 主要用于 SAM1；SAM2 的输入尺寸由配置文件确定（当前默认是 1024）。`auto` 会识别仓库内默认 SAM2 路径；对于其他 `.pt` 文件，可以显式传入 `--backend sam2` 或 `--backend sam1`。
 
 输出默认保存到 `web_outputs/<session>/`，不会写入 `tmp/` 下的训练实验目录。
 
@@ -46,4 +62,4 @@ python web_ui/app.py
 4. 使用“撤销最后一点”或“清空 prompt”修正结果；
 5. 点击“保存并下载结果”获取二值 mask 和 overlay PNG。
 
-网页后端会为每个浏览器 session 单独缓存 image embedding，同一张图片的后续点击只运行 mask decoder。
+网页后端会为每个浏览器 session 单独缓存 image embedding，同一张图片的后续点击只运行 prompt encoder 和 mask decoder。SAM2 Hiera-L 约需要较大 GPU 显存，若启动时报依赖错误，请确认 `external/sam2` 源码存在且环境安装了 `hydra-core`、`iopath`。

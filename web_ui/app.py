@@ -1,4 +1,4 @@
-"""Gradio web interface for click-prompt segmentation with custom SAM1 weights."""
+"""Gradio web interface for click-prompt segmentation with SAM1/SAM2 weights."""
 
 import argparse
 import os
@@ -11,9 +11,17 @@ import numpy as np
 from PIL import Image
 
 try:
-    from .sam_backend import Point, SAMRunner, SessionData, SessionStore, ensure_rgb
+    from .sam_backend import Point, SessionData, SessionStore, build_runner, ensure_rgb
 except ImportError:
-    from sam_backend import Point, SAMRunner, SessionData, SessionStore, ensure_rgb
+    from sam_backend import Point, SessionData, SessionStore, build_runner, ensure_rgb
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_CHECKPOINT = REPO_ROOT / (
+    "external/sam2/sam2_logs/lung_hiera_l_1024_f1_bs7_12ep_full_valbest_v2/"
+    "checkpoints/val_all_seg_slice_iou_mean.pt"
+)
+DEFAULT_SAM2_CONFIG = "configs/sam2/sam2_hiera_l.yaml"
 
 
 def _session_id(request: Optional[gr.Request]) -> str:
@@ -75,7 +83,7 @@ def _render(data: SessionData, status: Optional[str] = None):
     return display, overlay, mask_image, _points_json(data.points), status or score_text, None, None
 
 
-def build_demo(runner: SAMRunner, output_dir: str = "web_outputs") -> gr.Blocks:
+def build_demo(runner: Any, output_dir: str = "web_outputs") -> gr.Blocks:
     store = SessionStore(runner)
     output_root = Path(output_dir).expanduser().resolve()
 
@@ -87,11 +95,12 @@ def build_demo(runner: SAMRunner, output_dir: str = "web_outputs") -> gr.Blocks:
         try:
             rgb = ensure_rgb(image)
             with session.lock:
-                session.predictor.set_image(rgb)
+                runner.set_image(session.predictor, rgb)
                 session.image = rgb
                 session.points.clear()
                 session.mask = None
                 session.score = None
+                session.low_res_mask = None
             return _render(session, f"图片已加载（{rgb.shape[1]}×{rgb.shape[0]}），正在等待点击。")
         except Exception as exc:
             store.reset(_session_id(request))
@@ -109,7 +118,11 @@ def build_demo(runner: SAMRunner, output_dir: str = "web_outputs") -> gr.Blocks:
             label = 0 if mode == "背景点" else 1
             with session.lock:
                 session.points.append((x, y, label))
-                session.mask, session.score = runner.predict(session.predictor, session.points)
+                session.mask, session.score, session.low_res_mask = runner.predict(
+                    session.predictor,
+                    session.points,
+                    mask_input=session.low_res_mask,
+                )
             return _render(session)
         except Exception as exc:
             return _render(session, f"点击分割失败：{exc}")
@@ -120,9 +133,11 @@ def build_demo(runner: SAMRunner, output_dir: str = "web_outputs") -> gr.Blocks:
             if session.points:
                 session.points.pop()
             if session.points:
-                session.mask, session.score = runner.predict(session.predictor, session.points)
+                session.mask, session.score, session.low_res_mask = runner.predict(
+                    session.predictor, session.points
+                )
             else:
-                session.mask, session.score = None, None
+                session.mask, session.score, session.low_res_mask = None, None, None
         message = "已撤销最后一个点击。" if session.points or session.image is not None else None
         return _render(session, message)
 
@@ -130,7 +145,7 @@ def build_demo(runner: SAMRunner, output_dir: str = "web_outputs") -> gr.Blocks:
         session = store.get(_session_id(request))
         with session.lock:
             session.points.clear()
-            session.mask, session.score = None, None
+            session.mask, session.score, session.low_res_mask = None, None, None
         return _render(session, "已清空 prompt。")
 
     def reset_image(request: gr.Request):
@@ -151,9 +166,9 @@ def build_demo(runner: SAMRunner, output_dir: str = "web_outputs") -> gr.Blocks:
             Image.fromarray(_overlay(session.image, session.mask), mode="RGB").save(overlay_path)
         return str(mask_path), str(overlay_path), f"结果已保存到 `{session_dir}`。"
 
-    with gr.Blocks(title="Custom SAM1 Interactive Segmentation") as demo:
+    with gr.Blocks(title="SAM Interactive Segmentation") as demo:
         gr.Markdown(
-            """# Custom SAM1 交互式分割
+            """# SAM 交互式分割
 上传原图后选择点击类型并点击目标。绿色为前景点，红色为背景点；每次点击都会更新分割结果。"""
         )
         with gr.Row():
@@ -197,11 +212,17 @@ def build_demo(runner: SAMRunner, output_dir: str = "web_outputs") -> gr.Blocks:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Custom SAM1 click-prompt Gradio web UI")
+    parser = argparse.ArgumentParser(description="SAM click-prompt Gradio web UI")
     parser.add_argument(
         "--checkpoint",
-        default=os.environ.get("SAM_CHECKPOINT", "checkpoints/sam_vit_b_01ec64.pth"),
-        help="SAM1 原始 checkpoint 或包含 model_state_dict 的训练快照",
+        default=os.environ.get("SAM_CHECKPOINT", str(DEFAULT_CHECKPOINT)),
+        help="SAM1/SAM2 checkpoint；默认使用肺部 SAM2 prompt-trained 权重",
+    )
+    parser.add_argument(
+        "--backend",
+        default=os.environ.get("SAM_BACKEND", "auto"),
+        choices=("auto", "sam1", "sam2"),
+        help="推理后端；auto 会根据默认 checkpoint 自动选择",
     )
     parser.add_argument(
         "--model-type",
@@ -213,7 +234,12 @@ def parse_args() -> argparse.Namespace:
         "--input-size",
         type=int,
         default=int(os.environ.get("SAM_INPUT_SIZE", "0")),
-        help="训练时的输入边长；0 表示从 checkpoint 自动推断",
+        help="SAM1 训练时的输入边长；0 表示从 checkpoint 自动推断，SAM2 使用配置值",
+    )
+    parser.add_argument(
+        "--sam2-config",
+        default=os.environ.get("SAM2_CONFIG", DEFAULT_SAM2_CONFIG),
+        help="SAM2 Hydra 配置路径或相对于 external/sam2/sam2 的配置名",
     )
     parser.add_argument("--output-dir", default=os.environ.get("SAM_WEB_OUTPUT_DIR", "web_outputs"))
     parser.add_argument("--server-name", default=os.environ.get("GRADIO_SERVER_NAME", "0.0.0.0"))
@@ -228,14 +254,21 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    runner = SAMRunner(
+    runner = build_runner(
         checkpoint=args.checkpoint,
+        backend=args.backend,
         model_type=args.model_type,
+        sam2_config=args.sam2_config,
         device=args.device,
         input_size=args.input_size,
     )
+    print(f"Backend: {runner.backend}")
     print(f"Checkpoint: {runner.checkpoint}")
-    print(f"Model: sam_{runner.model_type}, input_size={runner.input_size}, device={runner.device}")
+    if runner.backend == "sam2":
+        print(f"Model: SAM2 {runner.model_type}, config={runner.config}")
+    else:
+        print(f"Model: SAM1 {runner.model_type}")
+    print(f"Input size: {runner.input_size}, device={runner.device}")
     demo = build_demo(runner, args.output_dir)
     demo.queue().launch(
         server_name=args.server_name,

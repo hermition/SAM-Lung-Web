@@ -1,1 +1,1 @@
-"""Interactive web UI for custom SAM1 checkpoints."""
+"""Interactive web UI for SAM1/SAM2 checkpoints."""
