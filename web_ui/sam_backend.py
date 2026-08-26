@@ -286,7 +286,8 @@ class SAM2Runner:
                 mask_input=mask_input,
                 multimask_output=len(points) == 1,
                 return_logits=False,
-                normalize_coords=False,
+                # Points from the web UI are in original-image pixel coordinates.
+                normalize_coords=True,
             )
         best_index = int(np.argmax(scores))
         low_res = np.asarray(low_res_masks[best_index], dtype=np.float32)
