@@ -176,11 +176,11 @@ def build_demo(runner: Any, output_dir: str = "web_outputs") -> gr.Blocks:
 上传原图后选择点击类型并点击目标。绿色为前景点，红色为背景点；每次点击都会更新分割结果。"""
         )
         with gr.Row():
-            with gr.Column(scale=1):
+            with gr.Column(scale=3):
                 image_input = gr.Image(
                     label="原图与预测叠加（上传后点击）",
                     type="numpy",
-                    height=600,
+                    height=760,
                     interactive=True,
                     elem_classes=["sam-full-image"],
                 )
@@ -191,7 +191,7 @@ def build_demo(runner: Any, output_dir: str = "web_outputs") -> gr.Blocks:
                     reset_button = gr.Button("重置图片")
                 status = gr.Markdown("等待上传图片。")
                 points = gr.JSON(label="当前 prompt", value=[])
-            with gr.Column(scale=1):
+            with gr.Column(scale=2):
                 mask_output = gr.Image(
                     label="二值 mask",
                     type="numpy",
