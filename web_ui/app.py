@@ -73,15 +73,15 @@ def _points_json(points: Sequence[Point]) -> List[dict]:
 
 def _render(data: SessionData, status: Optional[str] = None):
     if data.image is None:
-        return None, None, None, _points_json(data.points), status or "请先上传一张 2D 图片。", None, None
+        return None, None, _points_json(data.points), status or "请先上传一张 2D 图片。", None, None
     display = _draw_points(data.image, data.points)
     if data.mask is None:
         default_status = "图片已加载，请选择点击类型后点击目标。"
-        return display, None, None, _points_json(data.points), status or default_status, None, None
-    overlay = _overlay(data.image, data.mask)
+        return display, None, _points_json(data.points), status or default_status, None, None
+    display = _draw_points(_overlay(data.image, data.mask), data.points)
     mask_image = (data.mask.astype(np.uint8) * 255)
     score_text = f"分割完成，最佳 mask score：{data.score:.4f}" if data.score is not None else "分割完成。"
-    return display, overlay, mask_image, _points_json(data.points), status or score_text, None, None
+    return display, mask_image, _points_json(data.points), status or score_text, None, None
 
 
 def build_demo(runner: Any, output_dir: str = "web_outputs") -> gr.Blocks:
@@ -175,7 +175,7 @@ def build_demo(runner: Any, output_dir: str = "web_outputs") -> gr.Blocks:
         with gr.Row():
             with gr.Column(scale=1):
                 image_input = gr.Image(
-                    label="原图（上传后点击）",
+                    label="原图与预测叠加（上传后点击）",
                     type="numpy",
                     height=600,
                     interactive=True,
@@ -189,13 +189,6 @@ def build_demo(runner: Any, output_dir: str = "web_outputs") -> gr.Blocks:
                 status = gr.Markdown("等待上传图片。")
                 points = gr.JSON(label="当前 prompt", value=[])
             with gr.Column(scale=1):
-                overlay_output = gr.Image(
-                    label="分割叠加结果",
-                    type="numpy",
-                    format="png",
-                    height=450,
-                    elem_classes=["sam-full-image"],
-                )
                 mask_output = gr.Image(
                     label="二值 mask",
                     type="numpy",
@@ -210,7 +203,6 @@ def build_demo(runner: Any, output_dir: str = "web_outputs") -> gr.Blocks:
 
         render_outputs = [
             image_input,
-            overlay_output,
             mask_output,
             points,
             status,
