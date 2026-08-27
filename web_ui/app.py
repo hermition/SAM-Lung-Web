@@ -22,6 +22,7 @@ DEFAULT_CHECKPOINT = REPO_ROOT / (
     "checkpoints/val_all_seg_slice_iou_mean.pt"
 )
 DEFAULT_SAM2_CONFIG = "configs/sam2/sam2_hiera_l.yaml"
+IMAGE_FIT_CSS = ".sam-full-image img { object-fit: contain !important; }"
 
 
 def _session_id(request: Optional[gr.Request]) -> str:
@@ -166,7 +167,7 @@ def build_demo(runner: Any, output_dir: str = "web_outputs") -> gr.Blocks:
             Image.fromarray(_overlay(session.image, session.mask), mode="RGB").save(overlay_path)
         return str(mask_path), str(overlay_path), f"结果已保存到 `{session_dir}`。"
 
-    with gr.Blocks(title="SAM Interactive Segmentation") as demo:
+    with gr.Blocks(title="SAM Interactive Segmentation", css=IMAGE_FIT_CSS) as demo:
         gr.Markdown(
             """# SAM 交互式分割
 上传原图后选择点击类型并点击目标。绿色为前景点，红色为背景点；每次点击都会更新分割结果。"""
@@ -178,6 +179,7 @@ def build_demo(runner: Any, output_dir: str = "web_outputs") -> gr.Blocks:
                     type="numpy",
                     height=600,
                     interactive=True,
+                    elem_classes=["sam-full-image"],
                 )
                 click_mode = gr.Radio(["前景点", "背景点"], value="前景点", label="点击类型")
                 with gr.Row():
@@ -187,8 +189,21 @@ def build_demo(runner: Any, output_dir: str = "web_outputs") -> gr.Blocks:
                 status = gr.Markdown("等待上传图片。")
                 points = gr.JSON(label="当前 prompt", value=[])
             with gr.Column(scale=1):
-                overlay_output = gr.Image(label="分割叠加结果", type="numpy", height=450)
-                mask_output = gr.Image(label="二值 mask", type="numpy", image_mode="L", height=450)
+                overlay_output = gr.Image(
+                    label="分割叠加结果",
+                    type="numpy",
+                    format="png",
+                    height=450,
+                    elem_classes=["sam-full-image"],
+                )
+                mask_output = gr.Image(
+                    label="二值 mask",
+                    type="numpy",
+                    image_mode="L",
+                    format="png",
+                    height=450,
+                    elem_classes=["sam-full-image"],
+                )
                 save_button = gr.Button("保存并下载结果", variant="primary")
                 mask_file = gr.File(label="mask PNG", file_count="single")
                 overlay_file = gr.File(label="overlay PNG", file_count="single")
