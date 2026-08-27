@@ -22,7 +22,10 @@ DEFAULT_CHECKPOINT = REPO_ROOT / (
     "checkpoints/val_all_seg_slice_iou_mean.pt"
 )
 DEFAULT_SAM2_CONFIG = "configs/sam2/sam2_hiera_l.yaml"
-IMAGE_FIT_CSS = ".sam-full-image img { object-fit: contain !important; }"
+IMAGE_FIT_CSS = (
+    ".sam-full-image img { object-fit: contain !important; }"
+    ".sam-auto-height img { height: auto !important; }"
+)
 
 
 def _session_id(request: Optional[gr.Request]) -> str:
@@ -73,15 +76,15 @@ def _points_json(points: Sequence[Point]) -> List[dict]:
 
 def _render(data: SessionData, status: Optional[str] = None):
     if data.image is None:
-        return None, None, _points_json(data.points), status or "请先上传一张 2D 图片。", None, None
+        return None, None, _points_json(data.points), status or "请先上传一张 2D 图片。"
     display = _draw_points(data.image, data.points)
     if data.mask is None:
         default_status = "图片已加载，请选择点击类型后点击目标。"
-        return display, None, _points_json(data.points), status or default_status, None, None
+        return display, None, _points_json(data.points), status or default_status
     display = _draw_points(_overlay(data.image, data.mask), data.points)
     mask_image = (data.mask.astype(np.uint8) * 255)
     score_text = f"分割完成，最佳 mask score：{data.score:.4f}" if data.score is not None else "分割完成。"
-    return display, mask_image, _points_json(data.points), status or score_text, None, None
+    return display, mask_image, _points_json(data.points), status or score_text
 
 
 def build_demo(runner: Any, output_dir: str = "web_outputs") -> gr.Blocks:
@@ -156,7 +159,7 @@ def build_demo(runner: Any, output_dir: str = "web_outputs") -> gr.Blocks:
     def save_results(request: gr.Request):
         session = store.get(_session_id(request))
         if session.image is None or session.mask is None:
-            return None, None, "请先上传图片并点击目标生成 mask。"
+            return "请先上传图片并点击目标生成 mask。"
         safe_session = re.sub(r"[^A-Za-z0-9_.-]", "_", _session_id(request))
         session_dir = output_root / safe_session
         session_dir.mkdir(parents=True, exist_ok=True)
@@ -165,7 +168,7 @@ def build_demo(runner: Any, output_dir: str = "web_outputs") -> gr.Blocks:
         with session.lock:
             Image.fromarray((session.mask.astype(np.uint8) * 255), mode="L").save(mask_path)
             Image.fromarray(_overlay(session.image, session.mask), mode="RGB").save(overlay_path)
-        return str(mask_path), str(overlay_path), f"结果已保存到 `{session_dir}`。"
+        return f"结果已保存到 `{session_dir}`。"
 
     with gr.Blocks(title="SAM Interactive Segmentation", css=IMAGE_FIT_CSS) as demo:
         gr.Markdown(
@@ -194,27 +197,22 @@ def build_demo(runner: Any, output_dir: str = "web_outputs") -> gr.Blocks:
                     type="numpy",
                     image_mode="L",
                     format="png",
-                    height=450,
-                    elem_classes=["sam-full-image"],
+                    elem_classes=["sam-full-image", "sam-auto-height"],
                 )
-                save_button = gr.Button("保存并下载结果", variant="primary")
-                mask_file = gr.File(label="mask PNG", file_count="single")
-                overlay_file = gr.File(label="overlay PNG", file_count="single")
+                save_button = gr.Button("保存结果", variant="primary")
 
         render_outputs = [
             image_input,
             mask_output,
             points,
             status,
-            mask_file,
-            overlay_file,
         ]
         image_input.upload(upload_image, inputs=[image_input], outputs=render_outputs)
         image_input.select(select_point, inputs=[click_mode], outputs=render_outputs)
         undo_button.click(undo_point, inputs=[], outputs=render_outputs)
         clear_button.click(clear_points, inputs=[], outputs=render_outputs)
         reset_button.click(reset_image, inputs=[], outputs=render_outputs)
-        save_button.click(save_results, inputs=[], outputs=[mask_file, overlay_file, status])
+        save_button.click(save_results, inputs=[], outputs=[status])
     return demo
 
 
