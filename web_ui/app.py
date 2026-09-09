@@ -2,24 +2,23 @@
 
 import argparse
 import os
-import re
 from pathlib import Path
 from typing import Any, List, Optional, Sequence, Tuple
 
 import gradio as gr
 import numpy as np
-from PIL import Image
 
 try:
+    from .case_logger import CaseLogger, utc_now
     from .sam_backend import Point, SessionData, SessionStore, build_runner, ensure_rgb
 except ImportError:
+    from case_logger import CaseLogger, utc_now
     from sam_backend import Point, SessionData, SessionStore, build_runner, ensure_rgb
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CHECKPOINT = REPO_ROOT / (
-    "external/sam2/sam2_logs/lung_hiera_l_1024_f1_bs7_12ep_full_valbest_v2/"
-    "checkpoints/val_all_seg_slice_iou_mean.pt"
+    "web_ui/checkpoints/lung_sam2_hiera_l.pt"
 )
 DEFAULT_SAM2_CONFIG = "configs/sam2/sam2_hiera_l.yaml"
 IMAGE_FIT_CSS = (
@@ -90,24 +89,42 @@ def _render(data: SessionData, status: Optional[str] = None):
 def build_demo(runner: Any, output_dir: str = "web_outputs") -> gr.Blocks:
     store = SessionStore(runner)
     output_root = Path(output_dir).expanduser().resolve()
+    case_logger = CaseLogger(
+        output_root,
+        {
+            "backend": runner.backend,
+            "checkpoint": Path(runner.checkpoint).name,
+            "model_type": runner.model_type,
+            "input_size": runner.input_size,
+            "config": getattr(runner, "config", None),
+        },
+    )
 
     def upload_image(image, request: gr.Request):
-        session = store.get(_session_id(request))
+        session_id = _session_id(request)
+        session = store.get(session_id)
         if image is None:
-            store.reset(_session_id(request))
+            case_logger.close_case(session.case_id, "cleared")
+            store.reset(session_id)
             return _render(session, "等待上传图片。")
         try:
             rgb = ensure_rgb(image)
             with session.lock:
+                case_logger.close_case(session.case_id, "replaced")
                 runner.set_image(session.predictor, rgb)
+                case_id = case_logger.start_case(rgb, session_id)
+                session.case_id = case_id
                 session.image = rgb
                 session.points.clear()
                 session.mask = None
                 session.score = None
                 session.low_res_mask = None
-            return _render(session, f"图片已加载（{rgb.shape[1]}×{rgb.shape[0]}），正在等待点击。")
+            return _render(
+                session,
+                f"图片已加载（{rgb.shape[1]}×{rgb.shape[0]}），case：`{case_id}`。",
+            )
         except Exception as exc:
-            store.reset(_session_id(request))
+            store.reset(session_id)
             return _render(session, f"图片加载失败：{exc}")
 
     def select_point(mode: str, request: gr.Request, event: gr.SelectData):
@@ -120,13 +137,26 @@ def build_demo(runner: Any, output_dir: str = "web_outputs") -> gr.Blocks:
             x = max(0.0, min(float(width - 1), x))
             y = max(0.0, min(float(height - 1), y))
             label = 0 if mode == "背景点" else 1
+            clicked_at = utc_now()
             with session.lock:
-                session.points.append((x, y, label))
-                session.mask, session.score, session.low_res_mask = runner.predict(
+                point = (x, y, label)
+                new_points = [*session.points, point]
+                mask, score, low_res_mask = runner.predict(
                     session.predictor,
-                    session.points,
+                    new_points,
                     mask_input=session.low_res_mask,
                 )
+                case_logger.record_interaction(
+                    session.case_id,
+                    "point",
+                    new_points,
+                    mask=mask,
+                    score=score,
+                    point=point,
+                    recorded_at=clicked_at,
+                )
+                session.points = new_points
+                session.mask, session.score, session.low_res_mask = mask, score, low_res_mask
             return _render(session)
         except Exception as exc:
             return _render(session, f"点击分割失败：{exc}")
@@ -134,41 +164,53 @@ def build_demo(runner: Any, output_dir: str = "web_outputs") -> gr.Blocks:
     def undo_point(request: gr.Request):
         session = store.get(_session_id(request))
         with session.lock:
-            if session.points:
-                session.points.pop()
-            if session.points:
-                session.mask, session.score, session.low_res_mask = runner.predict(
-                    session.predictor, session.points
+            new_points = session.points[:-1]
+            if new_points:
+                mask, score, low_res_mask = runner.predict(
+                    session.predictor, new_points
                 )
             else:
-                session.mask, session.score, session.low_res_mask = None, None, None
+                mask, score, low_res_mask = None, None, None
+            if session.case_id and session.points:
+                case_logger.record_interaction(
+                    session.case_id,
+                    "undo",
+                    new_points,
+                    mask=mask,
+                    score=score,
+                )
+            session.points = new_points
+            session.mask, session.score, session.low_res_mask = mask, score, low_res_mask
         message = "已撤销最后一个点击。" if session.points or session.image is not None else None
         return _render(session, message)
 
     def clear_points(request: gr.Request):
         session = store.get(_session_id(request))
         with session.lock:
+            if session.case_id and session.points:
+                case_logger.record_interaction(session.case_id, "clear", [])
             session.points.clear()
             session.mask, session.score, session.low_res_mask = None, None, None
         return _render(session, "已清空 prompt。")
 
     def reset_image(request: gr.Request):
-        session = store.reset(_session_id(request))
+        session_id = _session_id(request)
+        session = store.get(session_id)
+        case_logger.close_case(session.case_id, "reset")
+        session = store.reset(session_id)
         return _render(session, "已重置当前会话。")
 
     def save_results(request: gr.Request):
         session = store.get(_session_id(request))
         if session.image is None or session.mask is None:
             return "请先上传图片并点击目标生成 mask。"
-        safe_session = re.sub(r"[^A-Za-z0-9_.-]", "_", _session_id(request))
-        session_dir = output_root / safe_session
-        session_dir.mkdir(parents=True, exist_ok=True)
-        mask_path = session_dir / "mask.png"
-        overlay_path = session_dir / "overlay.png"
         with session.lock:
-            Image.fromarray((session.mask.astype(np.uint8) * 255), mode="L").save(mask_path)
-            Image.fromarray(_overlay(session.image, session.mask), mode="RGB").save(overlay_path)
-        return f"结果已保存到 `{session_dir}`。"
+            case_dir = case_logger.save_final(
+                session.case_id,
+                session.mask,
+                _overlay(session.image, session.mask),
+            )
+        return f"结果已保存到 `{case_dir}`。"
 
     with gr.Blocks(title="SAM Interactive Segmentation", css=IMAGE_FIT_CSS) as demo:
         gr.Markdown(

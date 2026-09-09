@@ -330,6 +330,7 @@ def build_runner(
 @dataclass
 class SessionData:
     predictor: Any
+    case_id: Optional[str] = None
     image: Optional[np.ndarray] = None
     points: List[Point] = field(default_factory=list)
     mask: Optional[np.ndarray] = None
@@ -360,6 +361,7 @@ class SessionStore:
                 reset_predictor = getattr(data.predictor, "reset_predictor", None)
             if reset_predictor is not None:
                 reset_predictor()
+            data.case_id = None
             data.image = None
             data.points.clear()
             data.mask = None

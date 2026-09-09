@@ -1,3 +1,11 @@
+# SAM 肺部分割医院采集版
+
+本分支提供可迁移的 SAM2 肺部交互分割网站。医生上传图片后，系统会按 UTC 时间戳创建独立 case，自动保存输入图像、每一次前景/背景点的坐标与时间、该次分割 mask，以及最终 mask/overlay。病例数据不会提交到 Git。
+
+快速部署请阅读 [DEPLOYMENT.md](DEPLOYMENT.md)，交互与日志格式请阅读 [web_ui/README.md](web_ui/README.md)。部署 checkpoint 由 Git LFS 管理，clone 前请安装 Git LFS，并使用 `--recurse-submodules` 获取固定版本的 SAM2 源码。
+
+> 该工具用于辅助标注/研究，不应直接作为诊断结论。医院上线前需由院方完成身份认证、HTTPS、权限审计、加密、备份及数据留存策略配置。
+
 ## Latest updates -- SAM 2: Segment Anything in Images and Videos
 
 Please check out our new release on [**Segment Anything Model 2 (SAM 2)**](https://github.com/facebookresearch/segment-anything-2).
