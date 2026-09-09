@@ -41,7 +41,7 @@ GRADIO_SERVER_PORT=7860 \
 bash scripts/run_hospital_web.sh
 ```
 
-迁移验收至少确认：权重 SHA-256 一致；测试通过；上传后立即出现 `input.png` 和 `case.json`；每次点击新增一张 mask 和一条带时间的 prompt；重启服务后旧 case 仍保留；医院反向代理已提供认证与 HTTPS。
+迁移验收至少确认：权重 SHA-256 一致；测试通过；上传后立即出现 `input.png` 和 `case.json`；每次点击新增一张 mask 和一条带时间的 prompt；“一键导出全部日志”能下载包含所有 case 的 ZIP；重启服务后旧 case 仍保留；医院反向代理已提供认证与 HTTPS。
 
 ```bash
 cd web_ui/checkpoints

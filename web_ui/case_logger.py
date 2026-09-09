@@ -8,6 +8,7 @@ import os
 import re
 import threading
 import uuid
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional, Sequence
@@ -175,6 +176,31 @@ class CaseLogger:
             }
             self._write_manifest(manifest_path, manifest)
         return case_dir
+
+    def export_all_cases(self) -> Path:
+        case_dirs = sorted(
+            path
+            for path in self.output_root.iterdir()
+            if path.is_dir()
+            and CASE_ID_PATTERN.fullmatch(path.name)
+            and (path / "case.json").is_file()
+        )
+        if not case_dirs:
+            raise ValueError("当前没有可导出的 case 日志")
+        export_dir = self.output_root / "exports"
+        export_dir.mkdir(exist_ok=True, mode=0o700)
+        os.chmod(export_dir, 0o700)
+        archive_path = export_dir / f"all_cases_{filename_timestamp()}_{uuid.uuid4().hex[:8]}.zip"
+        temporary_path = archive_path.with_name(f".{archive_path.name}.{uuid.uuid4().hex}.tmp")
+        with zipfile.ZipFile(temporary_path, "w", zipfile.ZIP_DEFLATED) as archive:
+            for case_dir in case_dirs:
+                with self._lock(case_dir.name):
+                    for path in sorted(case_dir.rglob("*")):
+                        if path.is_file():
+                            archive.write(path, Path(case_dir.name) / path.relative_to(case_dir))
+        os.chmod(temporary_path, 0o600)
+        os.replace(temporary_path, archive_path)
+        return archive_path
 
     def close_case(self, case_id: Optional[str], reason: str) -> None:
         if not case_id:

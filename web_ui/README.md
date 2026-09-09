@@ -8,6 +8,7 @@
 - 撤销、清空和重置；
 - mask overlay、二值 mask 和 PNG 下载；
 - 上传时自动创建带 UTC 时间戳的 case，每次打点立即保存坐标、时间和对应 mask；
+- 一键将服务器当前保存的全部 case 日志导出为 ZIP 下载；
 - 默认 SAM2 checkpoint，以及显式选择后端的 SAM1 checkpoint。
 
 ## 启动
@@ -68,6 +69,8 @@ hospital_cases/20260909T120000.123456Z_a1b2c3d4/
 
 `case.json` 是追加式审计日志，包含输入图像摘要、模型信息、每次点击的像素坐标/前背景标签/UTC 时间、当时生效的全部 prompt、score 和对应 mask 路径。撤销和清空也会记录，历史点击不会被删除。即使医生没有点击“保存结果”，输入和每次点击的 mask 也已经落盘。
 
+点击“一键导出全部日志”会生成 `hospital_cases/exports/all_cases_<UTC时间戳>_<随机后缀>.zip` 并在网页提供下载。压缩包包含导出时已有的全部 case 目录；每次导出都会生成新文件，不覆盖历史导出。
+
 `--share` 仅适合临时演示；处理医疗或其他敏感图片时请使用内网地址，并在生产环境配置访问控制和反向代理。
 
 ## 交互说明
@@ -77,6 +80,7 @@ hospital_cases/20260909T120000.123456Z_a1b2c3d4/
 3. 如需排除区域，切换为“背景点”后点击该区域；
 4. 使用“撤销最后一点”或“清空 prompt”修正结果；
 5. 点击“保存结果”额外生成 `final_mask.png` 和 `final_overlay.png`。
+6. 点击“一键导出全部日志”下载全部病例日志压缩包。
 
 网页后端会为每个浏览器 session 单独缓存 image embedding，同一张图片的后续点击只运行 prompt encoder 和 mask decoder。浏览器 session 只以 SHA-256 摘要写入日志，图片统一转存为 PNG，不保留上传文件的 EXIF 元数据。case 目录权限为 `0700`、文件权限为 `0600`。
 

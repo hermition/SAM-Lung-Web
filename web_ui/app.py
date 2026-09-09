@@ -212,6 +212,13 @@ def build_demo(runner: Any, output_dir: str = "web_outputs") -> gr.Blocks:
             )
         return f"结果已保存到 `{case_dir}`。"
 
+    def export_all_logs():
+        try:
+            archive_path = case_logger.export_all_cases()
+            return str(archive_path), f"全部 case 日志已导出：`{archive_path.name}`。"
+        except Exception as exc:
+            return None, f"导出失败：{exc}"
+
     with gr.Blocks(title="SAM Interactive Segmentation", css=IMAGE_FIT_CSS) as demo:
         gr.Markdown(
             """# SAM 交互式分割
@@ -242,6 +249,8 @@ def build_demo(runner: Any, output_dir: str = "web_outputs") -> gr.Blocks:
                     elem_classes=["sam-full-image", "sam-auto-height"],
                 )
                 save_button = gr.Button("保存结果", variant="primary")
+                export_button = gr.Button("一键导出全部日志")
+                export_file = gr.File(label="全部 case 日志压缩包", interactive=False)
 
         render_outputs = [
             image_input,
@@ -255,6 +264,7 @@ def build_demo(runner: Any, output_dir: str = "web_outputs") -> gr.Blocks:
         clear_button.click(clear_points, inputs=[], outputs=render_outputs)
         reset_button.click(reset_image, inputs=[], outputs=render_outputs)
         save_button.click(save_results, inputs=[], outputs=[status])
+        export_button.click(export_all_logs, inputs=[], outputs=[export_file, status])
     return demo
 
 

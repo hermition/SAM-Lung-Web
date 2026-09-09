@@ -3,6 +3,7 @@ import json
 import os
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 import numpy as np
@@ -45,6 +46,8 @@ class CaseLoggerTest(unittest.TestCase):
             )
             logger.record_interaction(case_id, "undo", [first_point], mask=first_mask, score=0.8)
             logger.save_final(case_id, first_mask, image)
+            second_case_id = logger.start_case(image, "another-session")
+            archive_path = logger.export_all_cases()
 
             self.assertRegex(case_id, CASE_ID_PATTERN)
             case_dir = output_root / case_id
@@ -67,6 +70,14 @@ class CaseLoggerTest(unittest.TestCase):
             self.assertTrue((case_dir / "final_mask.png").is_file())
             self.assertTrue((case_dir / "final_overlay.png").is_file())
             self.assertEqual(os.stat(case_dir / "case.json").st_mode & 0o777, 0o600)
+            self.assertEqual(os.stat(archive_path).st_mode & 0o777, 0o600)
+            with zipfile.ZipFile(archive_path) as archive:
+                archived_files = set(archive.namelist())
+            self.assertIn(f"{case_id}/case.json", archived_files)
+            self.assertIn(f"{case_id}/input.png", archived_files)
+            self.assertIn(f"{case_id}/masks/{Path(manifest['interactions'][0]['mask_path']).name}", archived_files)
+            self.assertIn(f"{second_case_id}/case.json", archived_files)
+            self.assertNotIn("exports", "/".join(archived_files))
 
 
 if __name__ == "__main__":
