@@ -55,6 +55,10 @@ def _prompt(point: Point) -> Dict[str, Any]:
     }
 
 
+def _username(value: object) -> str:
+    return str(value or "").strip() or "admin"
+
+
 class CaseLogger:
     """Persist one immutable input and the mask produced by every point prompt."""
 
@@ -94,7 +98,7 @@ class CaseLogger:
         with path.open("r", encoding="utf-8") as file_handle:
             return json.load(file_handle)
 
-    def start_case(self, image: np.ndarray, session_id: str) -> str:
+    def start_case(self, image: np.ndarray, session_id: str, username: str = "admin") -> str:
         created_at = utc_now()
         case_id = f"{filename_timestamp(created_at)}_{uuid.uuid4().hex[:8]}"
         case_dir = self._case_dir(case_id)
@@ -108,6 +112,7 @@ class CaseLogger:
             "created_at": iso_timestamp(created_at),
             "updated_at": iso_timestamp(created_at),
             "status": "active",
+            "username": _username(username),
             "session_hash": hashlib.sha256(session_id.encode("utf-8")).hexdigest(),
             "input": {
                 "path": "input.png",
@@ -159,7 +164,13 @@ class CaseLogger:
             manifest["updated_at"] = iso_timestamp(completed_at)
             self._write_manifest(manifest_path, manifest)
 
-    def save_final(self, case_id: str, mask: np.ndarray, overlay: np.ndarray) -> Path:
+    def save_final(
+        self,
+        case_id: str,
+        mask: np.ndarray,
+        overlay: np.ndarray,
+        username: str = "admin",
+    ) -> Path:
         case_dir = self._case_dir(case_id)
         manifest_path = case_dir / "case.json"
         with self._lock(case_id):
@@ -173,6 +184,7 @@ class CaseLogger:
             manifest["final"] = {
                 "mask_path": "final_mask.png",
                 "overlay_path": "final_overlay.png",
+                "saved_by": _username(username),
             }
             self._write_manifest(manifest_path, manifest)
         return case_dir

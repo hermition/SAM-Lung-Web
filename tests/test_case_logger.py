@@ -21,7 +21,7 @@ class CaseLoggerTest(unittest.TestCase):
             image[:, :, 1] = 90
             session_id = "doctor-browser-session"
 
-            case_id = logger.start_case(image, session_id)
+            case_id = logger.start_case(image, session_id, "医生甲")
             first_mask = np.zeros((12, 16), dtype=bool)
             first_mask[2:6, 3:8] = True
             first_point = (4.5, 3.0, 1)
@@ -45,14 +45,16 @@ class CaseLoggerTest(unittest.TestCase):
                 point=second_point,
             )
             logger.record_interaction(case_id, "undo", [first_point], mask=first_mask, score=0.8)
-            logger.save_final(case_id, first_mask, image)
-            second_case_id = logger.start_case(image, "another-session")
+            logger.save_final(case_id, first_mask, image, "医生甲")
+            second_case_id = logger.start_case(image, "another-session", "   ")
             archive_path = logger.export_all_cases()
 
             self.assertRegex(case_id, CASE_ID_PATTERN)
             case_dir = output_root / case_id
             manifest = json.loads((case_dir / "case.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["status"], "saved")
+            self.assertEqual(manifest["username"], "医生甲")
+            self.assertEqual(manifest["final"]["saved_by"], "医生甲")
             self.assertEqual(
                 manifest["session_hash"], hashlib.sha256(session_id.encode("utf-8")).hexdigest()
             )
@@ -78,6 +80,10 @@ class CaseLoggerTest(unittest.TestCase):
             self.assertIn(f"{case_id}/masks/{Path(manifest['interactions'][0]['mask_path']).name}", archived_files)
             self.assertIn(f"{second_case_id}/case.json", archived_files)
             self.assertNotIn("exports", "/".join(archived_files))
+            second_manifest = json.loads(
+                (output_root / second_case_id / "case.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(second_manifest["username"], "admin")
 
 
 if __name__ == "__main__":

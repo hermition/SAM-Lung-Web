@@ -100,7 +100,7 @@ def build_demo(runner: Any, output_dir: str = "web_outputs") -> gr.Blocks:
         },
     )
 
-    def upload_image(image, request: gr.Request):
+    def upload_image(image, username: str, request: gr.Request):
         session_id = _session_id(request)
         session = store.get(session_id)
         if image is None:
@@ -112,7 +112,7 @@ def build_demo(runner: Any, output_dir: str = "web_outputs") -> gr.Blocks:
             with session.lock:
                 case_logger.close_case(session.case_id, "replaced")
                 runner.set_image(session.predictor, rgb)
-                case_id = case_logger.start_case(rgb, session_id)
+                case_id = case_logger.start_case(rgb, session_id, username)
                 session.case_id = case_id
                 session.image = rgb
                 session.points.clear()
@@ -200,7 +200,7 @@ def build_demo(runner: Any, output_dir: str = "web_outputs") -> gr.Blocks:
         session = store.reset(session_id)
         return _render(session, "已重置当前会话。")
 
-    def save_results(request: gr.Request):
+    def save_results(username: str, request: gr.Request):
         session = store.get(_session_id(request))
         if session.image is None or session.mask is None:
             return "请先上传图片并点击目标生成 mask。"
@@ -209,6 +209,7 @@ def build_demo(runner: Any, output_dir: str = "web_outputs") -> gr.Blocks:
                 session.case_id,
                 session.mask,
                 _overlay(session.image, session.mask),
+                username,
             )
         return f"结果已保存到 `{case_dir}`。"
 
@@ -226,6 +227,7 @@ def build_demo(runner: Any, output_dir: str = "web_outputs") -> gr.Blocks:
         )
         with gr.Row():
             with gr.Column(scale=3):
+                username_input = gr.Textbox(label="用户名", value="admin", max_lines=1)
                 image_input = gr.Image(
                     label="原图与预测叠加（上传后点击）",
                     type="numpy",
@@ -258,12 +260,12 @@ def build_demo(runner: Any, output_dir: str = "web_outputs") -> gr.Blocks:
             points,
             status,
         ]
-        image_input.upload(upload_image, inputs=[image_input], outputs=render_outputs)
+        image_input.upload(upload_image, inputs=[image_input, username_input], outputs=render_outputs)
         image_input.select(select_point, inputs=[click_mode], outputs=render_outputs)
         undo_button.click(undo_point, inputs=[], outputs=render_outputs)
         clear_button.click(clear_points, inputs=[], outputs=render_outputs)
         reset_button.click(reset_image, inputs=[], outputs=render_outputs)
-        save_button.click(save_results, inputs=[], outputs=[status])
+        save_button.click(save_results, inputs=[username_input], outputs=[status])
         export_button.click(export_all_logs, inputs=[], outputs=[export_file, status])
     return demo
 
