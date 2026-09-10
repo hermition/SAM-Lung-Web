@@ -41,7 +41,7 @@ def _event_xy(event: Any) -> Tuple[float, float]:
 
 def _draw_points(image: np.ndarray, points: Sequence[Point]) -> np.ndarray:
     output = image.copy()
-    radius = max(4, min(output.shape[:2]) // 100)
+    radius = max(3, min(output.shape[:2]) // 180)
     for x_value, y_value, label in points:
         x, y = int(round(x_value)), int(round(y_value))
         color = np.array([0, 210, 80] if label == 1 else [235, 60, 60], dtype=np.uint8)
